@@ -45,32 +45,29 @@ def fetch_rss_bulk():
             for e in feed.entries[:20]:
                 title = getattr(e, "title", "") or ""
                 summary = getattr(e, "summary", "") or ""
-                text = (title + " " + summary).lower()
-                if any(k in text for k in KEYWORDS) or "ecb" in text or "euro area" in text:
-                    items.append({
-                        "source": src_name,
-                        "url": getattr(e, "link", ""),
-                        "published_at": _safe_dt(e),
-                        "country": "EU",
-                        "headline": title.strip() or "(no title)",
-                        "body": summary,
-                    })
-        except Exception:
-            continue
+                dt = _safe_dt(e)
+                items.append({
+                    "source": src_name,
+                    "url": getattr(e, "link", ""),
+                    "published_at": dt,
+                    "country": "EU",
+                    "headline": title.strip() or "(no title)",
+                    "body": summary,
+                })
+        except Exception as ex:
+            print(f"RSS failed for {src_name}: {ex}")
     items.sort(key=lambda x: x["published_at"], reverse=True)
     return items
 
+
 def fetch_eurostat_news():
-    """Eurostat JSON API — fresher than RSS."""
     url = "https://ec.europa.eu/eurostat/api/dissemination/news"
     items = []
     try:
         data = requests.get(url, timeout=10).json()
+        print("Eurostat items:", len(data.get("value", [])))
         for item in data.get("value", [])[:10]:
-            try:
-                dt = datetime.fromisoformat(item["date"]).replace(tzinfo=UTC)
-            except Exception:
-                dt = datetime.now(tz=UTC)
+            dt = datetime.fromisoformat(item["date"]).replace(tzinfo=UTC)
             items.append({
                 "source": "Eurostat",
                 "url": item.get("link"),
@@ -218,3 +215,5 @@ with tabs[3]:
         st.info("No runs yet.")
     for r in reversed(RUNS[-10:]):
         st.write(f"Run {r['run_id']} — started {r['started_at']} (articles: {r['items_in']}, events: {r['items_out']})")
+
+
