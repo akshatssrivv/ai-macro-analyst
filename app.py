@@ -22,27 +22,22 @@ RSS_SOURCES = [
     ("Destatis (DE)", "https://www.destatis.de/DE/Service/RSS/english/_node.html"),
     ("INE (ES)",      "https://www.ine.es/info/rss/anu_en.xml"),
 
-    # Debt agencies (some don’t have RSS but we can scrape in step 3)
-    # Placeholders for now:
-    ("AFT (FR) Calendar",   "https://www.aft.gouv.fr/en/rss/actualites.xml"),
+    # Debt agencies
+    ("AFT (FR)",   "https://www.aft.gouv.fr/en/rss/actualites.xml"),
     ("Finanzagentur (DE)",  "https://www.deutsche-finanzagentur.de/en/rss/press-release-rss-feed/"),
     ("Tesoro (IT)",         "https://www.mef.gov.it/en/rss/rss-news.xml"),
-    ("Tesoro Público (ES)", "https://www.tesoro.es/rss"),  # sometimes requires scrape
+    ("Tesoro Público (ES)", "https://www.tesoro.es/rss"),
 ]
 
-
-# relevance keywords for EU govies/macros (keep simple to start)
 KEYWORDS = [
     "auction","syndication","issuance","tap","oat","btp","bund","bobls","schatz",
     "gilts","spreads","spread","rating","downgrade","upgrade","fitch","moody","s&p",
     "budget","deficit","debt","ecb","council","lagarde","speech","cut","hike",
     "inflation","cpi","hicp","growth","recession","employment","payroll","strike",
-    "strike","industrial","gdp","forecast","syndicate","primary market"
+    "industrial","gdp","forecast","syndicate","primary market"
 ]
 
-
 def _safe_dt(entry):
-    # feedparser gives time struct in entry.published_parsed if present
     try:
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             return datetime(*entry.published_parsed[:6], tzinfo=UTC)
@@ -51,12 +46,10 @@ def _safe_dt(entry):
     return datetime.now(tz=UTC)
 
 def fetch_rss_bulk():
-    """Pull many RSS feeds; filter lightly by KEYWORDS."""
     items = []
     for src_name, url in RSS_SOURCES:
         try:
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
+            r = requests.get(url, timeout=10); r.raise_for_status()
             feed = feedparser.parse(r.text)
             for e in feed.entries[:20]:
                 title = getattr(e, "title", "") or ""
@@ -72,17 +65,11 @@ def fetch_rss_bulk():
                         "body": summary,
                     })
         except Exception:
-            # skip failures silently for now (some feeds change), we'll see plenty of others
             continue
-    # sort newest first
     items.sort(key=lambda x: x["published_at"], reverse=True)
     return items
 
 def fetch_ecb_calendar_events():
-    """
-    Treat ECB 'Speeches' RSS as upcoming 'events' (lightweight & reliable).
-    Real calendar scraping is fickle; this gives you immediate content in Events.
-    """
     url = "https://www.ecb.europa.eu/press/rss/speeches.html"
     out = []
     try:
@@ -100,74 +87,29 @@ def fetch_ecb_calendar_events():
             })
     except Exception:
         pass
-    # keep next 7 days-ish so Events tab isn’t empty
     horizon = datetime.now(tz=UTC) + timedelta(days=7)
     out = [ev for ev in out if ev["date_time"] <= horizon]
     out.sort(key=lambda x: x["date_time"])
     return out
 
-
-def fetch_ratings_events():
-    today = datetime.now(tz=UTC)
-    return [
-        {"date_time": today + timedelta(days=3), "country": "EU",
-         "type": "Rating Review", "details": "Fitch scheduled review (dummy placeholder)",
-         "source_link": "https://www.fitchratings.com", "status": "upcoming"},
-        {"date_time": today + timedelta(days=7), "country": "EU",
-         "type": "Rating Review", "details": "Moody’s scheduled review (dummy placeholder)",
-         "source_link": "https://www.moodys.com", "status": "upcoming"},
-    ]
-
-def fetch_fitch_calendar():
-    url = "https://www.fitchratings.com/research/sovereigns"
-    events = []
-    try:
-        r = requests.get(url, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
-        for row in soup.select("tr"):  # adjust based on table structure
-            cols = [c.get_text(strip=True) for c in row.find_all("td")]
-            if len(cols) >= 2:
-                date_str, country = cols[0], cols[1]
-                try:
-                    dt = datetime.strptime(date_str, "%d %b %Y").replace(tzinfo=UTC)
-                except Exception:
-                    continue
-                events.append({
-                    "date_time": dt,
-                    "country": country,
-                    "type": "Rating Review",
-                    "details": f"Fitch review for {country}",
-                    "source_link": url,
-                    "status": "upcoming" if dt > datetime.now(tz=UTC) else "released"
-                })
-    except Exception:
-        pass
-    return events
-
-
-
 def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.now(tz=UTC)
-
-    # === real ingestion (public-only) ===
     articles = fetch_rss_bulk()
-    events = fetch_ecb_calendar_events() + fetch_fitch_calendar()
+    events = fetch_ecb_calendar_events()
 
-    # brief from top 3 articles
     top3 = articles[:3]
     brief = {
         "run_id": run_id,
         "created_at": started,
         "what_happened": "; ".join(a["headline"] for a in top3) if top3 else "No new relevant items.",
-        "why_it_matters": "Public-source scan across ECB/EU/national stats. Early cut without FT/BBG.",
+        "why_it_matters": "Public-source scan across ECB/EU/national stats.",
         "action_bias": "Observe",
         "confidence": 0.4 + 0.2 * (1 if top3 else 0),
         "risks": "Feed gaps; headline-only context.",
         "links": [a["url"] for a in top3 if a.get("url")],
     }
 
-    # persist in memory
     RUNS.append({"run_id": run_id, "started_at": started, "items_in": len(articles), "items_out": len(events)})
     ARTICLES.extend(articles)
     EVENTS.extend(events)
@@ -175,51 +117,50 @@ def run_once():
 
     return {"run_id": run_id, "items_in": len(articles), "items_out": len(events)}
 
-
-
 # ------------------ UI ------------------
 
 st.set_page_config(page_title="AI Macro News & Events Analyst", layout="wide")
 st.title("AI Macro News & Events Analyst — Demo Skeleton")
 
-tabs = st.tabs(["Briefs", "Run Now", "News Archive", "Events", "Ops"])
+# 🔘 Global Run button in sidebar
+with st.sidebar:
+    st.subheader("Controls")
+    if st.button("🔄 Run pipeline now"):
+        result = run_once()
+        st.success(f"Run {result['run_id']} complete: {result['items_in']} articles, {result['items_out']} events")
+
+tabs = st.tabs(["Briefs", "News Archive", "Events", "Ops"])
 
 # Briefs
 with tabs[0]:
     st.subheader("Top items")
     if not BRIEFS:
-        st.info("No briefs yet. Use Run Now.")
+        st.info("No briefs yet. Hit 'Run pipeline' in sidebar.")
     for b in reversed(BRIEFS[-5:]):
         st.markdown(f"**What**: {b['what_happened']}")
         st.markdown(f"**Why**: {b['why_it_matters']}")
         st.write("---")
 
-# Run Now
-with tabs[1]:
-    st.subheader("Ad-hoc run")
-    if st.button("Run pipeline once"):
-        result = run_once()
-        st.success(result)
-
 # Archive
-with tabs[2]:
+with tabs[1]:
     st.subheader("News Archive")
     if not ARTICLES:
         st.info("No articles yet.")
     for a in reversed(ARTICLES[-20:]):
         st.caption(f"{a['published_at']} · {a['source']} · {a['country']}")
         st.markdown(f"**{a['headline']}**")
-        st.write(a["url"])
+        if a["url"]:
+            st.write(f"[Source]({a['url']})")
         st.write("---")
 
 # Events
-with tabs[3]:
-    st.subheader("Upcoming Events")
+with tabs[2]:
+    st.subheader("Upcoming Events (7 days)")
     now = datetime.now(tz=UTC)
-    horizon = now + timedelta(days=7)   # show next 7 days
+    horizon = now + timedelta(days=7)
     upcoming = [e for e in EVENTS if now - timedelta(hours=2) <= e["date_time"] <= horizon]
     if not upcoming:
-        st.info("No events surfaced yet. Hit Run Now again in a minute.")
+        st.info("No events surfaced yet. Run pipeline.")
     for e in sorted(upcoming, key=lambda x: x["date_time"]):
         when = e["date_time"].strftime("%Y-%m-%d %H:%M UTC")
         st.caption(f"{when} · {e['country']} · {e['type']}")
@@ -228,11 +169,10 @@ with tabs[3]:
             st.write(f"[Source]({e['source_link']})")
         st.write("---")
 
-
 # Ops
-with tabs[4]:
+with tabs[3]:
     st.subheader("Run logs")
     if not RUNS:
         st.info("No runs yet.")
     for r in reversed(RUNS[-10:]):
-        st.write(f"Run {r['run_id']} — started {r['started_at']} (items: {r['items_in']})")
+        st.write(f"Run {r['run_id']} — started {r['started_at']} (articles: {r['items_in']}, events: {r['items_out']})")
