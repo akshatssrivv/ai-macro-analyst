@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from db import get_collection
 from pipeline import run_once
 
+st.sidebar.success("✅ Connected to MongoDB")
+
 st.set_page_config(page_title="AI Macro News & Events Analyst", layout="wide")
 st.title("AI Macro News & Events Analyst — Mongo Skeleton")
 
