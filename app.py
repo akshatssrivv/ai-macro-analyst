@@ -1,24 +1,63 @@
 import streamlit as st
 from datetime import datetime, timedelta
-from db import get_collection
-from pipeline import run_once
+import uuid
 
-st.sidebar.success("✅ Connected to MongoDB")
+# In-memory storage (reset each app restart)
+RUNS = []
+ARTICLES = []
+EVENTS = []
+BRIEFS = []
+
+def run_once():
+    run_id = uuid.uuid4().hex[:8]
+    started = datetime.utcnow()
+
+    # dummy collect
+    articles = [
+        {"source": "DUMMY", "url": "https://example.com/eu-budget",
+         "published_at": started, "country": "EU", "headline": "EU budget talks progress (dummy)"},
+        {"source": "DUMMY", "url": "https://example.com/aft-auction",
+         "published_at": started, "country": "FR", "headline": "AFT schedules OAT auction (dummy)"},
+    ]
+    events = [
+        {"date_time": started + timedelta(hours=2), "country": "US",
+         "type": "macro release", "details": "NFP at 13:30 UK (dummy)",
+         "source_link": "https://www.bls.gov/", "status": "upcoming"}
+    ]
+    brief = {
+        "run_id": run_id,
+        "created_at": started,
+        "what_happened": "; ".join(a["headline"] for a in articles),
+        "why_it_matters": "Scaffold test — shows dummy data end-to-end.",
+        "action_bias": "Observe",
+        "confidence": 0.5,
+        "risks": "None",
+        "links": [a["url"] for a in articles],
+    }
+
+    # persist in memory
+    RUNS.append({"run_id": run_id, "started_at": started, "items_in": len(articles)})
+    ARTICLES.extend(articles)
+    EVENTS.extend(events)
+    BRIEFS.append(brief)
+
+    return {"run_id": run_id, "items_in": len(articles)}
+
+# ------------------ UI ------------------
 
 st.set_page_config(page_title="AI Macro News & Events Analyst", layout="wide")
-st.title("AI Macro News & Events Analyst — Mongo Skeleton")
+st.title("AI Macro News & Events Analyst — Demo Skeleton")
 
 tabs = st.tabs(["Briefs", "Run Now", "News Archive", "Events", "Ops"])
 
 # Briefs
 with tabs[0]:
-    st.subheader("Top items (latest first)")
-    briefs = list(get_collection("brief_item").find().sort("created_at", -1).limit(5))
-    if not briefs:
-        st.info("No briefs yet. Use the Run Now tab.")
-    for b in briefs:
-        st.markdown(f"**What**: {b.get('what_happened','')}")
-        st.markdown(f"**Why**: {b.get('why_it_matters','')}")
+    st.subheader("Top items")
+    if not BRIEFS:
+        st.info("No briefs yet. Use Run Now.")
+    for b in reversed(BRIEFS[-5:]):
+        st.markdown(f"**What**: {b['what_happened']}")
+        st.markdown(f"**Why**: {b['why_it_matters']}")
         st.write("---")
 
 # Run Now
@@ -31,29 +70,30 @@ with tabs[1]:
 # Archive
 with tabs[2]:
     st.subheader("News Archive")
-    articles = list(get_collection("news_article").find().sort("published_at", -1).limit(20))
-    for a in articles:
-        st.caption(f"{a.get('published_at')} · {a.get('source')} · {a.get('country')}")
-        st.markdown(f"**{a.get('headline','')}**")
-        st.write(a.get("url",""))
+    if not ARTICLES:
+        st.info("No articles yet.")
+    for a in reversed(ARTICLES[-20:]):
+        st.caption(f"{a['published_at']} · {a['source']} · {a['country']}")
+        st.markdown(f"**{a['headline']}**")
+        st.write(a["url"])
         st.write("---")
 
 # Events
 with tabs[3]:
     st.subheader("Upcoming Events")
     now, horizon = datetime.utcnow(), datetime.utcnow() + timedelta(days=1)
-    events = list(get_collection("calendar_event")
-                  .find({"date_time": {"$gte": now, "$lte": horizon}})
-                  .sort("date_time", 1))
-    for e in events:
-        st.caption(f"{e.get('date_time')} · {e.get('country')} · {e.get('type')}")
-        st.write(e.get("details",""))
+    todays = [e for e in EVENTS if now <= e["date_time"] <= horizon]
+    if not todays:
+        st.info("No upcoming events.")
+    for e in todays:
+        st.caption(f"{e['date_time']} · {e['country']} · {e['type']}")
+        st.write(e["details"])
         st.write("---")
 
 # Ops
 with tabs[4]:
     st.subheader("Run logs")
-    logs = list(get_collection("run_log").find().sort("started_at", -1).limit(10))
-    for r in logs:
-        st.write(f"Run {r.get('run_id')} — {r.get('started_at')} → {r.get('finished_at')}")
-
+    if not RUNS:
+        st.info("No runs yet.")
+    for r in reversed(RUNS[-10:]):
+        st.write(f"Run {r['run_id']} — started {r['started_at']} (items: {r['items_in']})")
