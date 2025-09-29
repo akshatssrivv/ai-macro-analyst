@@ -118,6 +118,32 @@ def fetch_ratings_events():
          "source_link": "https://www.moodys.com", "status": "upcoming"},
     ]
 
+def fetch_fitch_calendar():
+    url = "https://www.fitchratings.com/research/sovereigns"
+    events = []
+    try:
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for row in soup.select("tr"):  # adjust based on table structure
+            cols = [c.get_text(strip=True) for c in row.find_all("td")]
+            if len(cols) >= 2:
+                date_str, country = cols[0], cols[1]
+                try:
+                    dt = datetime.strptime(date_str, "%d %b %Y").replace(tzinfo=UTC)
+                except Exception:
+                    continue
+                events.append({
+                    "date_time": dt,
+                    "country": country,
+                    "type": "Rating Review",
+                    "details": f"Fitch review for {country}",
+                    "source_link": url,
+                    "status": "upcoming" if dt > datetime.now(tz=UTC) else "released"
+                })
+    except Exception:
+        pass
+    return events
+
 
 
 def run_once():
@@ -126,7 +152,7 @@ def run_once():
 
     # === real ingestion (public-only) ===
     articles = fetch_rss_bulk()
-    events = fetch_ecb_calendar_events() + fetch_ratings_events()
+    events = fetch_ecb_calendar_events() + fetch_fitch_calendar()
 
     # brief from top 3 articles
     top3 = articles[:3]
@@ -188,6 +214,14 @@ with tabs[2]:
 
 # Events
 with tabs[3]:
+    for e in sorted(upcoming, key=lambda x: x["date_time"]):
+        when = e["date_time"].strftime("%Y-%m-%d %H:%M UTC")
+        st.caption(f"{when} · {e['country']} · {e['type']}")
+        st.markdown(f"**{e['details']}**")
+        if e.get("source_link"):
+            st.write(f"[Source]({e['source_link']})")
+        st.write("---")
+
     st.subheader("Upcoming Events")
     now = datetime.now(tz=UTC)
     horizon = now + timedelta(days=7)   # show next 7 days
