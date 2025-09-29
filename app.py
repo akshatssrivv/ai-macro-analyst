@@ -2,37 +2,72 @@ import streamlit as st
 from datetime import datetime, timedelta
 import uuid
 
+import requests
+import feedparser
+from bs4 import BeautifulSoup
+
+
 # In-memory storage (reset each app restart)
 RUNS = []
 ARTICLES = []
 EVENTS = []
 BRIEFS = []
 
+def fetch_ft_rss():
+    url = "https://www.ft.com/rss/home"
+    feed = feedparser.parse(requests.get(url).text)
+    articles = []
+    for entry in feed.entries[:5]:
+        articles.append({
+            "source": "FT",
+            "url": entry.link,
+            "published_at": datetime(*entry.published_parsed[:6]),
+            "country": "EU",  # crude default
+            "headline": entry.title,
+            "body": entry.summary if hasattr(entry, "summary") else ""
+        })
+    return articles
+
+def fetch_ecb_calendar():
+    url = "https://www.ecb.europa.eu/press/calendars/html/index.en.html"
+    html = requests.get(url).text
+    soup = BeautifulSoup(html, "html.parser")
+    events = []
+    for item in soup.select(".eventitem")[:5]:
+        date_text = item.select_one(".eventdate").get_text(strip=True)
+        try:
+            dt = datetime.strptime(date_text, "%d %B %Y")
+        except Exception:
+            dt = datetime.utcnow()
+        detail = item.get_text(" ", strip=True)
+        events.append({
+            "date_time": dt,
+            "country": "EU",
+            "type": "ECB",
+            "details": detail,
+            "source_link": url,
+            "status": "upcoming"
+        })
+    return events
+
+
 def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.utcnow()
 
-    # dummy collect
-    articles = [
-        {"source": "DUMMY", "url": "https://example.com/eu-budget",
-         "published_at": started, "country": "EU", "headline": "EU budget talks progress (dummy)"},
-        {"source": "DUMMY", "url": "https://example.com/aft-auction",
-         "published_at": started, "country": "FR", "headline": "AFT schedules OAT auction (dummy)"},
-    ]
-    events = [
-        {"date_time": started + timedelta(hours=2), "country": "US",
-         "type": "macro release", "details": "NFP at 13:30 UK (dummy)",
-         "source_link": "https://www.bls.gov/", "status": "upcoming"}
-    ]
+    # === Replace dummy collect with real feeds ===
+    articles = fetch_ft_rss()
+    events = fetch_ecb_calendar()
+
     brief = {
         "run_id": run_id,
         "created_at": started,
-        "what_happened": "; ".join(a["headline"] for a in articles),
-        "why_it_matters": "Scaffold test — shows dummy data end-to-end.",
+        "what_happened": "; ".join(a["headline"] for a in articles[:3]),
+        "why_it_matters": "First real ingestion demo: FT headlines + ECB calendar.",
         "action_bias": "Observe",
         "confidence": 0.5,
         "risks": "None",
-        "links": [a["url"] for a in articles],
+        "links": [a["url"] for a in articles[:3]],
     }
 
     # persist in memory
@@ -41,7 +76,8 @@ def run_once():
     EVENTS.extend(events)
     BRIEFS.append(brief)
 
-    return {"run_id": run_id, "items_in": len(articles)}
+    return {"run_id": run_id, "items_in": len(articles), "items_out": len(events)}
+
 
 # ------------------ UI ------------------
 
