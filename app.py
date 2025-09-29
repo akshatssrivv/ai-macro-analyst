@@ -7,31 +7,21 @@ from bs4 import BeautifulSoup
 RUNS, ARTICLES, EVENTS, BRIEFS = [], [], [], []
 UTC = timezone.utc
 
-# ---- source config (public-only; add more later) ----
+# ---- source config (RSS still included) ----
 RSS_SOURCES = [
-    # ECB / EU
     ("ECB Press",     "https://www.ecb.europa.eu/press/rss/press.html"),
     ("ECB Speeches",  "https://www.ecb.europa.eu/press/rss/speeches.html"),
     ("ECB Blog",      "https://www.ecb.europa.eu/press/blog/rss/blog.html"),
     ("EU Commission Presscorner", "https://ec.europa.eu/commission/presscorner/home_en?format=RSS"),
-    ("Eurostat News", "https://ec.europa.eu/eurostat/news/rss/news-release_en.rss"),
-
-    # National stats offices
     ("INSEE (FR)",    "https://www.insee.fr/en/rss/rss.xml"),
     ("ISTAT (IT)",    "https://www.istat.it/en/feed/"),
     ("Destatis (DE)", "https://www.destatis.de/DE/Service/RSS/english/_node.html"),
     ("INE (ES)",      "https://www.ine.es/info/rss/anu_en.xml"),
-
-    # Debt agencies
-    ("AFT (FR)",   "https://www.aft.gouv.fr/en/rss/actualites.xml"),
-    ("Finanzagentur (DE)",  "https://www.deutsche-finanzagentur.de/en/rss/press-release-rss-feed/"),
-    ("Tesoro (IT)",         "https://www.mef.gov.it/en/rss/rss-news.xml"),
-    ("Tesoro Público (ES)", "https://www.tesoro.es/rss"),
 ]
 
 KEYWORDS = [
     "auction","syndication","issuance","tap","oat","btp","bund","bobls","schatz",
-    "gilts","spreads","spread","rating","downgrade","upgrade","fitch","moody","s&p",
+    "gilts","spread","rating","downgrade","upgrade","fitch","moody","s&p",
     "budget","deficit","debt","ecb","council","lagarde","speech","cut","hike",
     "inflation","cpi","hicp","growth","recession","employment","payroll","strike",
     "industrial","gdp","forecast","syndicate","primary market"
@@ -45,6 +35,7 @@ def _safe_dt(entry):
         pass
     return datetime.now(tz=UTC)
 
+# ---- collectors ----
 def fetch_rss_bulk():
     items = []
     for src_name, url in RSS_SOURCES:
@@ -67,6 +58,29 @@ def fetch_rss_bulk():
         except Exception:
             continue
     items.sort(key=lambda x: x["published_at"], reverse=True)
+    return items
+
+def fetch_eurostat_news():
+    """Eurostat JSON API — fresher than RSS."""
+    url = "https://ec.europa.eu/eurostat/api/dissemination/news"
+    items = []
+    try:
+        data = requests.get(url, timeout=10).json()
+        for item in data.get("value", [])[:10]:
+            try:
+                dt = datetime.fromisoformat(item["date"]).replace(tzinfo=UTC)
+            except Exception:
+                dt = datetime.now(tz=UTC)
+            items.append({
+                "source": "Eurostat",
+                "url": item.get("link"),
+                "published_at": dt,
+                "country": "EU",
+                "headline": item.get("title"),
+                "body": item.get("summary", "")
+            })
+    except Exception as e:
+        print("Eurostat fetch failed", e)
     return items
 
 def fetch_ecb_calendar_events():
@@ -92,18 +106,47 @@ def fetch_ecb_calendar_events():
     out.sort(key=lambda x: x["date_time"])
     return out
 
+def fetch_aft_calendar():
+    """Scrape French AFT auction calendar."""
+    url = "https://www.aft.gouv.fr/en/archives/calendar"
+    events = []
+    try:
+        r = requests.get(url, timeout=10); r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        for row in soup.select("table tbody tr"):
+            cols = [c.get_text(strip=True) for c in row.find_all("td")]
+            if len(cols) >= 2:
+                date_str, details = cols[0], cols[1]
+                try:
+                    dt = datetime.strptime(date_str, "%d/%m/%Y").replace(tzinfo=UTC)
+                except Exception:
+                    continue
+                events.append({
+                    "date_time": dt,
+                    "country": "FR",
+                    "type": "Auction",
+                    "details": details,
+                    "source_link": url,
+                    "status": "upcoming" if dt > datetime.now(tz=UTC) else "released"
+                })
+    except Exception as e:
+        print("AFT scrape failed", e)
+    return events
+
+# ---- pipeline ----
 def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.now(tz=UTC)
-    articles = fetch_rss_bulk()
-    events = fetch_ecb_calendar_events()
+
+    articles = fetch_rss_bulk() + fetch_eurostat_news()
+    events = fetch_ecb_calendar_events() + fetch_aft_calendar()
 
     top3 = articles[:3]
     brief = {
         "run_id": run_id,
         "created_at": started,
         "what_happened": "; ".join(a["headline"] for a in top3) if top3 else "No new relevant items.",
-        "why_it_matters": "Public-source scan across ECB/EU/national stats.",
+        "why_it_matters": "Mixed-source scan: RSS + Eurostat API + AFT auctions.",
         "action_bias": "Observe",
         "confidence": 0.4 + 0.2 * (1 if top3 else 0),
         "risks": "Feed gaps; headline-only context.",
@@ -118,7 +161,6 @@ def run_once():
     return {"run_id": run_id, "items_in": len(articles), "items_out": len(events)}
 
 # ------------------ UI ------------------
-
 st.set_page_config(page_title="AI Macro News & Events Analyst", layout="wide")
 st.title("AI Macro News & Events Analyst — Demo Skeleton")
 
@@ -135,7 +177,7 @@ tabs = st.tabs(["Briefs", "News Archive", "Events", "Ops"])
 with tabs[0]:
     st.subheader("Top items")
     if not BRIEFS:
-        st.info("No briefs yet. Hit 'Run pipeline' in sidebar.")
+        st.info("No briefs yet. Run pipeline from sidebar.")
     for b in reversed(BRIEFS[-5:]):
         st.markdown(f"**What**: {b['what_happened']}")
         st.markdown(f"**Why**: {b['why_it_matters']}")
