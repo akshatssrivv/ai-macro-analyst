@@ -9,25 +9,37 @@ UTC = timezone.utc
 
 # ---- source config (public-only; add more later) ----
 RSS_SOURCES = [
-    # ECB
+    # ECB / EU
     ("ECB Press",     "https://www.ecb.europa.eu/press/rss/press.html"),
     ("ECB Speeches",  "https://www.ecb.europa.eu/press/rss/speeches.html"),
     ("ECB Blog",      "https://www.ecb.europa.eu/press/blog/rss/blog.html"),
-    # Eurostat / EU
     ("EU Commission Presscorner", "https://ec.europa.eu/commission/presscorner/home_en?format=RSS"),
-    # National stats (some may 404 if they change; we skip failures gracefully)
-    ("INSEE (FR) News",   "https://www.insee.fr/en/rss/rss.xml"),
-    ("ISTAT (IT) News",   "https://www.istat.it/en/feed/"),
-    ("Destatis (DE) News","https://www.destatis.de/DE/Service/RSS/english/_node.html"),  # site-wide; still useful
-    ("INE (ES) News",     "https://www.ine.es/info/rss/anu_en.xml"),
+    ("Eurostat News", "https://ec.europa.eu/eurostat/news/rss/news-release_en.rss"),
+
+    # National stats offices
+    ("INSEE (FR)",    "https://www.insee.fr/en/rss/rss.xml"),
+    ("ISTAT (IT)",    "https://www.istat.it/en/feed/"),
+    ("Destatis (DE)", "https://www.destatis.de/DE/Service/RSS/english/_node.html"),
+    ("INE (ES)",      "https://www.ine.es/info/rss/anu_en.xml"),
+
+    # Debt agencies (some don’t have RSS but we can scrape in step 3)
+    # Placeholders for now:
+    ("AFT (FR) Calendar",   "https://www.aft.gouv.fr/en/rss/actualites.xml"),
+    ("Finanzagentur (DE)",  "https://www.deutsche-finanzagentur.de/en/rss/press-release-rss-feed/"),
+    ("Tesoro (IT)",         "https://www.mef.gov.it/en/rss/rss-news.xml"),
+    ("Tesoro Público (ES)", "https://www.tesoro.es/rss"),  # sometimes requires scrape
 ]
+
 
 # relevance keywords for EU govies/macros (keep simple to start)
 KEYWORDS = [
-    "auction","syndication","tap","oat","btp","bund","bobl","schatz","bobl","gilts","dbond","spread",
-    "rating","fitch","moody","s&p","deficit","budget","debt","issuance","tesoro","dm0","finanzagentur",
-    "ecb","governing council","hike","cut","rate","inflation","cpi","hICP","growth","recession","nfp","payrolls"
+    "auction","syndication","issuance","tap","oat","btp","bund","bobls","schatz",
+    "gilts","spreads","spread","rating","downgrade","upgrade","fitch","moody","s&p",
+    "budget","deficit","debt","ecb","council","lagarde","speech","cut","hike",
+    "inflation","cpi","hicp","growth","recession","employment","payroll","strike",
+    "strike","industrial","gdp","forecast","syndicate","primary market"
 ]
+
 
 def _safe_dt(entry):
     # feedparser gives time struct in entry.published_parsed if present
@@ -95,13 +107,26 @@ def fetch_ecb_calendar_events():
     return out
 
 
+def fetch_ratings_events():
+    today = datetime.now(tz=UTC)
+    return [
+        {"date_time": today + timedelta(days=3), "country": "EU",
+         "type": "Rating Review", "details": "Fitch scheduled review (dummy placeholder)",
+         "source_link": "https://www.fitchratings.com", "status": "upcoming"},
+        {"date_time": today + timedelta(days=7), "country": "EU",
+         "type": "Rating Review", "details": "Moody’s scheduled review (dummy placeholder)",
+         "source_link": "https://www.moodys.com", "status": "upcoming"},
+    ]
+
+
+
 def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.now(tz=UTC)
 
     # === real ingestion (public-only) ===
     articles = fetch_rss_bulk()
-    events = fetch_ecb_calendar_events()
+    events = fetch_ecb_calendar_events() + fetch_ratings_events()
 
     # brief from top 3 articles
     top3 = articles[:3]
