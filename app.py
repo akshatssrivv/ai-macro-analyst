@@ -214,14 +214,6 @@ with tabs[2]:
 
 # Events
 with tabs[3]:
-    for e in sorted(upcoming, key=lambda x: x["date_time"]):
-        when = e["date_time"].strftime("%Y-%m-%d %H:%M UTC")
-        st.caption(f"{when} · {e['country']} · {e['type']}")
-        st.markdown(f"**{e['details']}**")
-        if e.get("source_link"):
-            st.write(f"[Source]({e['source_link']})")
-        st.write("---")
-
     st.subheader("Upcoming Events")
     now = datetime.now(tz=UTC)
     horizon = now + timedelta(days=7)   # show next 7 days
@@ -229,10 +221,11 @@ with tabs[3]:
     if not upcoming:
         st.info("No events surfaced yet. Hit Run Now again in a minute.")
     for e in sorted(upcoming, key=lambda x: x["date_time"]):
-        st.caption(f"{e['date_time']} · {e['country']} · {e['type']}")
-        st.write(e["details"])
+        when = e["date_time"].strftime("%Y-%m-%d %H:%M UTC")
+        st.caption(f"{when} · {e['country']} · {e['type']}")
+        st.markdown(f"**{e['details']}**")
         if e.get("source_link"):
-            st.write(e["source_link"])
+            st.write(f"[Source]({e['source_link']})")
         st.write("---")
 
 
