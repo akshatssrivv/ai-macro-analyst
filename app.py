@@ -1,82 +1,129 @@
 import streamlit as st
-from datetime import datetime, timedelta
-import uuid
-
-import requests
-import feedparser
+from datetime import datetime, timedelta, timezone
+import uuid, requests, feedparser
 from bs4 import BeautifulSoup
 
-
 # In-memory storage (reset each app restart)
-RUNS = []
-ARTICLES = []
-EVENTS = []
-BRIEFS = []
+RUNS, ARTICLES, EVENTS, BRIEFS = [], [], [], []
+UTC = timezone.utc
 
-def fetch_ft_rss():
-    url = "https://www.ft.com/rss/home"
-    feed = feedparser.parse(requests.get(url).text)
-    articles = []
-    for entry in feed.entries[:5]:
-        articles.append({
-            "source": "FT",
-            "url": entry.link,
-            "published_at": datetime(*entry.published_parsed[:6]),
-            "country": "EU",  # crude default
-            "headline": entry.title,
-            "body": entry.summary if hasattr(entry, "summary") else ""
-        })
-    return articles
+# ---- source config (public-only; add more later) ----
+RSS_SOURCES = [
+    # ECB
+    ("ECB Press",     "https://www.ecb.europa.eu/press/rss/press.html"),
+    ("ECB Speeches",  "https://www.ecb.europa.eu/press/rss/speeches.html"),
+    ("ECB Blog",      "https://www.ecb.europa.eu/press/blog/rss/blog.html"),
+    # Eurostat / EU
+    ("EU Commission Presscorner", "https://ec.europa.eu/commission/presscorner/home_en?format=RSS"),
+    # National stats (some may 404 if they change; we skip failures gracefully)
+    ("INSEE (FR) News",   "https://www.insee.fr/en/rss/rss.xml"),
+    ("ISTAT (IT) News",   "https://www.istat.it/en/feed/"),
+    ("Destatis (DE) News","https://www.destatis.de/DE/Service/RSS/english/_node.html"),  # site-wide; still useful
+    ("INE (ES) News",     "https://www.ine.es/info/rss/anu_en.xml"),
+]
 
-def fetch_ecb_calendar():
-    url = "https://www.ecb.europa.eu/press/calendars/html/index.en.html"
-    html = requests.get(url).text
-    soup = BeautifulSoup(html, "html.parser")
-    events = []
-    for item in soup.select(".eventitem")[:5]:
-        date_text = item.select_one(".eventdate").get_text(strip=True)
+# relevance keywords for EU govies/macros (keep simple to start)
+KEYWORDS = [
+    "auction","syndication","tap","oat","btp","bund","bobl","schatz","bobl","gilts","dbond","spread",
+    "rating","fitch","moody","s&p","deficit","budget","debt","issuance","tesoro","dm0","finanzagentur",
+    "ecb","governing council","hike","cut","rate","inflation","cpi","hICP","growth","recession","nfp","payrolls"
+]
+
+def _safe_dt(entry):
+    # feedparser gives time struct in entry.published_parsed if present
+    try:
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            return datetime(*entry.published_parsed[:6], tzinfo=UTC)
+    except Exception:
+        pass
+    return datetime.now(tz=UTC)
+
+def fetch_rss_bulk():
+    """Pull many RSS feeds; filter lightly by KEYWORDS."""
+    items = []
+    for src_name, url in RSS_SOURCES:
         try:
-            dt = datetime.strptime(date_text, "%d %B %Y")
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            feed = feedparser.parse(r.text)
+            for e in feed.entries[:20]:
+                title = getattr(e, "title", "") or ""
+                summary = getattr(e, "summary", "") or ""
+                text = (title + " " + summary).lower()
+                if any(k in text for k in KEYWORDS) or "ecb" in text or "euro area" in text:
+                    items.append({
+                        "source": src_name,
+                        "url": getattr(e, "link", ""),
+                        "published_at": _safe_dt(e),
+                        "country": "EU",
+                        "headline": title.strip() or "(no title)",
+                        "body": summary,
+                    })
         except Exception:
-            dt = datetime.utcnow()
-        detail = item.get_text(" ", strip=True)
-        events.append({
-            "date_time": dt,
-            "country": "EU",
-            "type": "ECB",
-            "details": detail,
-            "source_link": url,
-            "status": "upcoming"
-        })
-    return events
+            # skip failures silently for now (some feeds change), we'll see plenty of others
+            continue
+    # sort newest first
+    items.sort(key=lambda x: x["published_at"], reverse=True)
+    return items
+
+def fetch_ecb_calendar_events():
+    """
+    Treat ECB 'Speeches' RSS as upcoming 'events' (lightweight & reliable).
+    Real calendar scraping is fickle; this gives you immediate content in Events.
+    """
+    url = "https://www.ecb.europa.eu/press/rss/speeches.html"
+    out = []
+    try:
+        r = requests.get(url, timeout=10); r.raise_for_status()
+        feed = feedparser.parse(r.text)
+        for e in feed.entries[:20]:
+            dt = _safe_dt(e)
+            out.append({
+                "date_time": dt,
+                "country": "EU",
+                "type": "ECB Speech",
+                "details": getattr(e, "title", "ECB speech"),
+                "source_link": getattr(e, "link", url),
+                "status": "upcoming" if dt >= datetime.now(tz=UTC) - timedelta(hours=2) else "released"
+            })
+    except Exception:
+        pass
+    # keep next 7 days-ish so Events tab isn’t empty
+    horizon = datetime.now(tz=UTC) + timedelta(days=7)
+    out = [ev for ev in out if ev["date_time"] <= horizon]
+    out.sort(key=lambda x: x["date_time"])
+    return out
 
 
 def run_once():
     run_id = uuid.uuid4().hex[:8]
-    started = datetime.utcnow()
+    started = datetime.now(tz=UTC)
 
-    # === Replace dummy collect with real feeds ===
-    articles = fetch_ft_rss()
-    events = fetch_ecb_calendar()
+    # === real ingestion (public-only) ===
+    articles = fetch_rss_bulk()
+    events = fetch_ecb_calendar_events()
 
+    # brief from top 3 articles
+    top3 = articles[:3]
     brief = {
         "run_id": run_id,
         "created_at": started,
-        "what_happened": "; ".join(a["headline"] for a in articles[:3]),
-        "why_it_matters": "First real ingestion demo: FT headlines + ECB calendar.",
+        "what_happened": "; ".join(a["headline"] for a in top3) if top3 else "No new relevant items.",
+        "why_it_matters": "Public-source scan across ECB/EU/national stats. Early cut without FT/BBG.",
         "action_bias": "Observe",
-        "confidence": 0.5,
-        "risks": "None",
-        "links": [a["url"] for a in articles[:3]],
+        "confidence": 0.4 + 0.2 * (1 if top3 else 0),
+        "risks": "Feed gaps; headline-only context.",
+        "links": [a["url"] for a in top3 if a.get("url")],
     }
 
     # persist in memory
-    RUNS.append({"run_id": run_id, "started_at": started, "items_in": len(articles)})
+    RUNS.append({"run_id": run_id, "started_at": started, "items_in": len(articles), "items_out": len(events)})
     ARTICLES.extend(articles)
     EVENTS.extend(events)
     BRIEFS.append(brief)
 
     return {"run_id": run_id, "items_in": len(articles), "items_out": len(events)}
+
 
 
 # ------------------ UI ------------------
@@ -117,14 +164,18 @@ with tabs[2]:
 # Events
 with tabs[3]:
     st.subheader("Upcoming Events")
-    now, horizon = datetime.utcnow(), datetime.utcnow() + timedelta(days=1)
-    todays = [e for e in EVENTS if now <= e["date_time"] <= horizon]
-    if not todays:
-        st.info("No upcoming events.")
-    for e in todays:
+    now = datetime.now(tz=UTC)
+    horizon = now + timedelta(days=7)   # show next 7 days
+    upcoming = [e for e in EVENTS if now - timedelta(hours=2) <= e["date_time"] <= horizon]
+    if not upcoming:
+        st.info("No events surfaced yet. Hit Run Now again in a minute.")
+    for e in sorted(upcoming, key=lambda x: x["date_time"]):
         st.caption(f"{e['date_time']} · {e['country']} · {e['type']}")
         st.write(e["details"])
+        if e.get("source_link"):
+            st.write(e["source_link"])
         st.write("---")
+
 
 # Ops
 with tabs[4]:
