@@ -19,6 +19,18 @@ RSS_SOURCES = [
     ("INE (ES)",      "https://www.ine.es/info/rss/anu_en.xml"),
 ]
 
+RSS_SOURCES += [
+    ("Reuters Markets", "https://feeds.reuters.com/reuters/marketsNews"),
+    ("AP Business", "https://apnews.com/hub/business?format=xml"),
+    ("Handelsblatt", "https://www.handelsblatt.com/contentexport/feed/rss/finanzen"),
+    ("Les Échos", "https://www.lesechos.fr/rss/rss_finances.xml"),
+    ("Expansión", "https://e00-expansion.uecdn.es/rss/mercados.xml"),
+    ("Il Sole 24 Ore", "https://www.ilsole24ore.com/rss/finanza.xml"),
+    ("ANSA Economy", "https://www.ansa.it/sito/notizie/economia/economia_rss.xml"),
+    ("Politico Europe", "https://www.politico.eu/feed/"),
+]
+
+
 KEYWORDS = [
     "auction","syndication","issuance","tap","oat","btp","bund","bobls","schatz",
     "gilts","spread","rating","downgrade","upgrade","fitch","moody","s&p",
