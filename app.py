@@ -74,49 +74,60 @@ def _safe_dt(entry):
 # ---- collectors ----
 def fetch_gdelt_news():
     """
-    Beast-mode GDELT collector:
-    - Uses TimelineArtList (hourly bins across last 24h)
-    - Pulls broad finance/debt themes (ECON_FINANCE, SOVEREIGN_DEBT, INFLATION, INTEREST_RATES)
-    - Returns hundreds of articles per run
+    Enhanced GDELT collector:
+    - Multiple queries (themes + free text)
+    - 72h window
+    - Dedup by URL
     """
+    queries = [
+        "theme:SOVEREIGN_DEBT",
+        "theme:INFLATION",
+        "theme:INTEREST_RATES",
+        "theme:ECON_FINANCE",
+        "ECB OR Eurozone OR OAT OR Bund OR BTP OR Gilts OR Treasuries OR sovereign bond"
+    ]
+
     now = datetime.utcnow()
-    start = (now - timedelta(days=1)).strftime("%Y%m%d%H%M%S")
+    since = now - timedelta(days=3)   # 72h window
+    start = since.strftime("%Y%m%d%H%M%S")
     end = now.strftime("%Y%m%d%H%M%S")
 
-    url = (
-        "https://api.gdeltproject.org/api/v2/doc/doc"
-        "?query=theme:ECON_FINANCE OR theme:SOVEREIGN_DEBT OR theme:INFLATION OR theme:INTEREST_RATES"
-        f"&mode=TimelineArtList&startdatetime={start}&enddatetime={end}"
-        "&timespan=24h&timelimit=60m&maxrecords=250&format=json"
-    )
+    all_items = []
+    seen_urls = set()
 
-    out = []
-    try:
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-
-        # TimelineArtList groups into hourly bins → loop through them
-        for bin in data.get("timeline", []):
-            for item in bin.get("articles", []):
+    for q in queries:
+        url = (
+            "https://api.gdeltproject.org/api/v2/doc/doc"
+            f"?query={q}&mode=ArtList&startdatetime={start}&enddatetime={end}"
+            "&maxrecords=250&format=json"
+        )
+        try:
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            for item in data.get("articles", []):
+                u = item.get("url")
+                if not u or u in seen_urls:
+                    continue
+                seen_urls.add(u)
                 try:
                     dt = datetime.strptime(item["seendate"], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
                 except Exception:
                     dt = datetime.now(tz=UTC)
-                out.append({
-                    "source": item.get("sourceCommonName", "GDELT"),
-                    "url": item.get("url"),
+                all_items.append({
+                    "source": f"GDELT ({q})",
+                    "url": u,
                     "published_at": dt,
                     "country": item.get("sourceCountry", "N/A"),
-                    "headline": item.get("title"),
-                    "body": item.get("url")
+                    "headline": item.get("title", "(no title)"),
+                    "body": item.get("url")  # no summary, keep URL as placeholder
                 })
-    except Exception as e:
-        print("GDELT fetch failed:", e)
+        except Exception as e:
+            print(f"GDELT fetch failed for query {q}:", e)
 
-    # sort newest → oldest
-    out.sort(key=lambda x: x["published_at"], reverse=True)
-    return out
+    # sort newest first
+    all_items.sort(key=lambda x: x["published_at"], reverse=True)
+    return all_items
 
     
 def fetch_rss_bulk():
