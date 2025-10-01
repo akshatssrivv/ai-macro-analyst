@@ -84,7 +84,13 @@ def fetch_gdelt_news():
         "default","Argentina","Turkey","UK Gilts","Treasuries"
     ]
     query = " OR ".join(keywords)
-    url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=ArtList&maxrecords=50&format=json"
+    now = datetime.utcnow()
+    since = now - timedelta(hours=6)
+    start = since.strftime("%Y%m%d%H%M%S")
+    end = now.strftime("%Y%m%d%H%M%S")
+    
+    url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=ArtList&startdatetime={start}&enddatetime={end}&maxrecords=250&format=json"
+
     out = []
     try:
         r = requests.get(url, timeout=15)
