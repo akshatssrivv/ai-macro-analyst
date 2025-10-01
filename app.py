@@ -265,10 +265,6 @@ def run_once():
     ARTICLES.extend(new_articles)
     EVENTS.extend(events)
     BRIEFS.append(brief)
-    print("RSS:", len(rss_articles))
-    print("GDELT raw:", len(gdelt_articles))
-    print("All combined:", len(all_articles))
-    print("New unique:", len(new_articles))
 
 
     return {
@@ -276,7 +272,10 @@ def run_once():
         "items_in": len(all_articles),
         "items_new": len(new_articles),
         "items_out": len(events)
-    }
+    }, print("RSS:", len(rss_articles)), 
+    print("GDELT raw:", len(gdelt_articles)), 
+    print("All combined:", len(all_articles)), 
+    print("New unique:", len(new_articles))
 
 
 # ------------------ UI ------------------
