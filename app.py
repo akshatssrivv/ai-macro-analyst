@@ -74,46 +74,45 @@ def _safe_dt(entry):
 # ---- collectors ----
 def fetch_gdelt_news():
     """
-    Fetch global news via GDELT 2.0 API.
-    Broad keyword set (lots of noise for now, we'll filter later).
+    Fetch global finance/economy news via GDELT 2.0 API.
+    Uses theme filters + 6h pagination across last 24h.
     """
-    keywords = [
-        "ECB","Bund","OAT","BTP","spread","sovereign","bond","auction","syndication",
-        "downgrade","upgrade","rating","Fitch","Moody","S&P","deficit","debt",
-        "budget","inflation","CPI","HICP","growth","recession","IMF","World Bank",
-        "default","Argentina","Turkey","UK Gilts","Treasuries"
-    ]
-    query = " OR ".join(keywords)
     now = datetime.utcnow()
-    since = now - timedelta(hours=24)
-    start = since.strftime("%Y%m%d%H%M%S")
-    end = now.strftime("%Y%m%d%H%M%S")
-    
-    url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=ArtList&startdatetime={start}&enddatetime={end}&maxrecords=250&format=json"
-
     out = []
-    try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        for item in data.get("articles", []):
-            # GDELT fields: url, title, sourceCountry, language, seendate, sourceCommonName
-            try:
-                dt = datetime.strptime(item["seendate"], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
-            except Exception:
-                dt = datetime.now(tz=UTC)
-            out.append({
-                "source": item.get("sourceCommonName", "GDELT"),
-                "url": item.get("url"),
-                "published_at": dt,
-                "country": item.get("sourceCountry", "N/A"),
-                "headline": item.get("title"),
-                "body": item.get("url")  # GDELT doesn't return summary, so just keep URL
-            })
-    except Exception as e:
-        print("GDELT fetch failed:", e)
+    # slice into 4 chunks of 6h each
+    for hours_back in range(0, 24, 6):
+        start = (now - timedelta(hours=hours_back+6)).strftime("%Y%m%d%H%M%S")
+        end   = (now - timedelta(hours=hours_back)).strftime("%Y%m%d%H%M%S")
+        url = (
+            "https://api.gdeltproject.org/api/v2/doc/doc"
+            f"?query=theme:ECON_FINANCE OR theme:DEBT_CRISIS OR theme:INFLATION"
+            f"&mode=ArtList&startdatetime={start}&enddatetime={end}"
+            "&maxrecords=250&format=json"
+        )
+        try:
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            for item in data.get("articles", []):
+                try:
+                    dt = datetime.strptime(item["seendate"], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+                except Exception:
+                    dt = datetime.now(tz=UTC)
+                out.append({
+                    "source": item.get("sourceCommonName", "GDELT"),
+                    "url": item.get("url"),
+                    "published_at": dt,
+                    "country": item.get("sourceCountry", "N/A"),
+                    "headline": item.get("title"),
+                    "body": item.get("url")  # no summary in GDELT
+                })
+        except Exception as e:
+            print("GDELT fetch failed:", e)
+            continue
+    # sort newest first
+    out.sort(key=lambda x: x["published_at"], reverse=True)
     return out
-
+    
 def fetch_rss_bulk():
     items = []
     for src_name, url in RSS_SOURCES:
