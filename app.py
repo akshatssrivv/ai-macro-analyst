@@ -72,6 +72,42 @@ def _safe_dt(entry):
     return datetime.now(tz=UTC)
 
 # ---- collectors ----
+def fetch_gdelt_news():
+    """
+    Fetch global news via GDELT 2.0 API.
+    Broad keyword set (lots of noise for now, we'll filter later).
+    """
+    keywords = [
+        "ECB","Bund","OAT","BTP","spread","sovereign","bond","auction","syndication",
+        "downgrade","upgrade","rating","Fitch","Moody","S&P","deficit","debt",
+        "budget","inflation","CPI","HICP","growth","recession","IMF","World Bank",
+        "default","Argentina","Turkey","UK Gilts","Treasuries"
+    ]
+    query = " OR ".join(keywords)
+    url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=ArtList&maxrecords=50&format=json"
+    out = []
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        for item in data.get("articles", []):
+            # GDELT fields: url, title, sourceCountry, language, seendate, sourceCommonName
+            try:
+                dt = datetime.strptime(item["seendate"], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+            except Exception:
+                dt = datetime.now(tz=UTC)
+            out.append({
+                "source": item.get("sourceCommonName", "GDELT"),
+                "url": item.get("url"),
+                "published_at": dt,
+                "country": item.get("sourceCountry", "N/A"),
+                "headline": item.get("title"),
+                "body": item.get("url")  # GDELT doesn't return summary, so just keep URL
+            })
+    except Exception as e:
+        print("GDELT fetch failed:", e)
+    return out
+
 def fetch_rss_bulk():
     items = []
     for src_name, url in RSS_SOURCES:
@@ -171,7 +207,7 @@ def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.now(tz=UTC)
 
-    articles = fetch_rss_bulk() + fetch_eurostat_news()
+    articles = fetch_rss_bulk() + fetch_gdelt_news()
     events = fetch_ecb_calendar_events() + fetch_aft_calendar()
 
     top3 = articles[:3]
