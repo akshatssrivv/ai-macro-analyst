@@ -85,7 +85,7 @@ def fetch_gdelt_news():
     ]
     query = " OR ".join(keywords)
     now = datetime.utcnow()
-    since = now - timedelta(hours=6)
+    since = now - timedelta(hours=24)
     start = since.strftime("%Y%m%d%H%M%S")
     end = now.strftime("%Y%m%d%H%M%S")
     
