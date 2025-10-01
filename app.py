@@ -9,26 +9,50 @@ UTC = timezone.utc
 
 # ---- source config (RSS still included) ----
 RSS_SOURCES = [
-    ("ECB Press",     "https://www.ecb.europa.eu/press/rss/press.html"),
-    ("ECB Speeches",  "https://www.ecb.europa.eu/press/rss/speeches.html"),
-    ("ECB Blog",      "https://www.ecb.europa.eu/press/blog/rss/blog.html"),
+    # ECB / EU institutions
+    ("ECB Press", "https://www.ecb.europa.eu/press/rss/press.html"),
+    ("ECB Speeches", "https://www.ecb.europa.eu/press/rss/speeches.html"),
+    ("ECB Blog", "https://www.ecb.europa.eu/press/blog/rss/blog.html"),
     ("EU Commission Presscorner", "https://ec.europa.eu/commission/presscorner/home_en?format=RSS"),
-    ("INSEE (FR)",    "https://www.insee.fr/en/rss/rss.xml"),
-    ("ISTAT (IT)",    "https://www.istat.it/en/feed/"),
+    ("Eurostat News", "https://ec.europa.eu/eurostat/news/rss/news-release_en.rss"),
+
+    # National stats offices
+    ("INSEE (FR)", "https://www.insee.fr/en/rss/rss.xml"),
+    ("ISTAT (IT)", "https://www.istat.it/en/feed/"),
     ("Destatis (DE)", "https://www.destatis.de/DE/Service/RSS/english/_node.html"),
-    ("INE (ES)",      "https://www.ine.es/info/rss/anu_en.xml"),
+    ("INE (ES)", "https://www.ine.es/info/rss/anu_en.xml"),
+
+    # Debt agencies
+    ("AFT (FR)", "https://www.aft.gouv.fr/en/rss/actualites.xml"),
+    ("Finanzagentur (DE)", "https://www.deutsche-finanzagentur.de/en/rss/press-release-rss-feed/"),
+    ("Tesoro (IT)", "https://www.mef.gov.it/en/rss/rss-news.xml"),
+    ("Tesoro Público (ES)", "https://www.tesoro.es/rss"),
+
+    # Global wires
+    ("Reuters Business", "https://feeds.reuters.com/reuters/businessNews"),
+    ("Reuters Markets", "https://feeds.reuters.com/reuters/marketsNews"),
+    ("Reuters World", "https://feeds.reuters.com/reuters/worldNews"),
+    ("AP Top News", "https://apnews.com/hub/ap-top-news?format=xml"),
+    ("AP Business", "https://apnews.com/hub/business?format=xml"),
+
+    # European press
+    ("Handelsblatt (DE)", "https://www.handelsblatt.com/contentexport/feed/rss/finanzen"),
+    ("Les Échos (FR)", "https://www.lesechos.fr/rss/rss_finances.xml"),
+    ("Expansión (ES)", "https://e00-expansion.uecdn.es/rss/mercados.xml"),
+    ("Il Sole 24 Ore (IT)", "https://www.ilsole24ore.com/rss/finanza.xml"),
+    ("ANSA Economy (IT)", "https://www.ansa.it/sito/notizie/economia/economia_rss.xml"),
+
+    # EU politics
+    ("Politico Europe", "https://www.politico.eu/feed/"),
+    ("Euractiv", "https://www.euractiv.com/feed/"),
+
+    # Think tanks
+    ("Bruegel", "https://www.bruegel.org/rss.xml"),
+
+    # Ratings agencies
+    ("Fitch Ratings", "https://www.fitchratings.com/site/rss"),
 ]
 
-RSS_SOURCES += [
-    ("Reuters Markets", "https://feeds.reuters.com/reuters/marketsNews"),
-    ("AP Business", "https://apnews.com/hub/business?format=xml"),
-    ("Handelsblatt", "https://www.handelsblatt.com/contentexport/feed/rss/finanzen"),
-    ("Les Échos", "https://www.lesechos.fr/rss/rss_finances.xml"),
-    ("Expansión", "https://e00-expansion.uecdn.es/rss/mercados.xml"),
-    ("Il Sole 24 Ore", "https://www.ilsole24ore.com/rss/finanza.xml"),
-    ("ANSA Economy", "https://www.ansa.it/sito/notizie/economia/economia_rss.xml"),
-    ("Politico Europe", "https://www.politico.eu/feed/"),
-]
 
 
 KEYWORDS = [
