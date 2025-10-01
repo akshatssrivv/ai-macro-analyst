@@ -219,14 +219,54 @@ with tabs[0]:
 # Archive
 with tabs[1]:
     st.subheader("News Archive")
+
     if not ARTICLES:
         st.info("No articles yet.")
-    for a in reversed(ARTICLES[-20:]):
-        st.caption(f"{a['published_at']} · {a['source']} · {a['country']}")
-        st.markdown(f"**{a['headline']}**")
-        if a["url"]:
-            st.write(f"[Source]({a['url']})")
-        st.write("---")
+    else:
+        # --- sort order control ---
+        sort_order = st.radio(
+            "Sort by",
+            ["Newest first", "Oldest first"],
+            horizontal=True,
+            index=0
+        )
+
+        sorted_articles = sorted(
+            ARTICLES,
+            key=lambda x: x["published_at"],
+            reverse=(sort_order == "Newest first")
+        )
+
+        # --- pagination ---
+        per_page = 10
+        total = len(sorted_articles)
+        total_pages = (total + per_page - 1) // per_page
+
+        # pick page
+        page = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            value=1,
+            step=1
+        )
+
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_articles = sorted_articles[start:end]
+
+        st.caption(f"Showing {len(page_articles)} of {total} articles")
+
+        for a in page_articles:
+            st.caption(f"{a['published_at']} · {a['source']} · {a['country']}")
+            st.markdown(f"**{a['headline']}**")
+            if a["url"]:
+                st.write(f"[Source]({a['url']})")
+            st.write("---")
+
+        # page nav
+        st.write(f"Page {page} of {total_pages}")
+
 
 # Events
 with tabs[2]:
