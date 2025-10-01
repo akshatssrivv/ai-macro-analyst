@@ -265,6 +265,11 @@ def run_once():
     ARTICLES.extend(new_articles)
     EVENTS.extend(events)
     BRIEFS.append(brief)
+    print("RSS:", len(rss_articles))
+    print("GDELT raw:", len(gdelt_articles))
+    print("All combined:", len(all_articles))
+    print("New unique:", len(new_articles))
+
 
     return {
         "run_id": run_id,
