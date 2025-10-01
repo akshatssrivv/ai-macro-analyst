@@ -74,26 +74,31 @@ def _safe_dt(entry):
 # ---- collectors ----
 def fetch_gdelt_news():
     """
-    Fetch global finance/economy news via GDELT 2.0 API.
-    Uses theme filters + 6h pagination across last 24h.
+    Beast-mode GDELT collector:
+    - Uses TimelineArtList (hourly bins across last 24h)
+    - Pulls broad finance/debt themes (ECON_FINANCE, SOVEREIGN_DEBT, INFLATION, INTEREST_RATES)
+    - Returns hundreds of articles per run
     """
     now = datetime.utcnow()
+    start = (now - timedelta(days=1)).strftime("%Y%m%d%H%M%S")
+    end = now.strftime("%Y%m%d%H%M%S")
+
+    url = (
+        "https://api.gdeltproject.org/api/v2/doc/doc"
+        "?query=theme:ECON_FINANCE OR theme:SOVEREIGN_DEBT OR theme:INFLATION OR theme:INTEREST_RATES"
+        f"&mode=TimelineArtList&startdatetime={start}&enddatetime={end}"
+        "&timespan=24h&timelimit=60m&maxrecords=250&format=json"
+    )
+
     out = []
-    # slice into 4 chunks of 6h each
-    for hours_back in range(0, 24, 6):
-        start = (now - timedelta(hours=hours_back+6)).strftime("%Y%m%d%H%M%S")
-        end   = (now - timedelta(hours=hours_back)).strftime("%Y%m%d%H%M%S")
-        url = (
-            "https://api.gdeltproject.org/api/v2/doc/doc"
-            f"?query=theme:ECON_FINANCE OR theme:DEBT_CRISIS OR theme:INFLATION"
-            f"&mode=ArtList&startdatetime={start}&enddatetime={end}"
-            "&maxrecords=250&format=json"
-        )
-        try:
-            r = requests.get(url, timeout=20)
-            r.raise_for_status()
-            data = r.json()
-            for item in data.get("articles", []):
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+
+        # TimelineArtList groups into hourly bins → loop through them
+        for bin in data.get("timeline", []):
+            for item in bin.get("articles", []):
                 try:
                     dt = datetime.strptime(item["seendate"], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
                 except Exception:
@@ -104,14 +109,15 @@ def fetch_gdelt_news():
                     "published_at": dt,
                     "country": item.get("sourceCountry", "N/A"),
                     "headline": item.get("title"),
-                    "body": item.get("url")  # no summary in GDELT
+                    "body": item.get("url")
                 })
-        except Exception as e:
-            print("GDELT fetch failed:", e)
-            continue
-    # sort newest first
+    except Exception as e:
+        print("GDELT fetch failed:", e)
+
+    # sort newest → oldest
     out.sort(key=lambda x: x["published_at"], reverse=True)
     return out
+
     
 def fetch_rss_bulk():
     items = []
