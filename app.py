@@ -229,27 +229,50 @@ def run_once():
     run_id = uuid.uuid4().hex[:8]
     started = datetime.now(tz=UTC)
 
-    articles = fetch_rss_bulk() + fetch_gdelt_news()
+    # pull fresh
+    rss_articles = fetch_rss_bulk()
+    gdelt_articles = fetch_gdelt_news()
+    all_articles = rss_articles + gdelt_articles
+
+    # global dedup by URL
+    seen = {a["url"] for a in ARTICLES}
+    new_articles = [a for a in all_articles if a["url"] not in seen]
+
+    # pull events
     events = fetch_ecb_calendar_events() + fetch_aft_calendar()
 
-    top3 = articles[:3]
+    # brief from top 3 new articles
+    top3 = new_articles[:3]
     brief = {
         "run_id": run_id,
         "created_at": started,
         "what_happened": "; ".join(a["headline"] for a in top3) if top3 else "No new relevant items.",
-        "why_it_matters": "Mixed-source scan: RSS + Eurostat API + AFT auctions.",
+        "why_it_matters": "Mixed-source scan: RSS + GDELT + calendars.",
         "action_bias": "Observe",
         "confidence": 0.4 + 0.2 * (1 if top3 else 0),
         "risks": "Feed gaps; headline-only context.",
         "links": [a["url"] for a in top3 if a.get("url")],
     }
 
-    RUNS.append({"run_id": run_id, "started_at": started, "items_in": len(articles), "items_out": len(events)})
-    ARTICLES.extend(articles)
+    # persist
+    RUNS.append({
+        "run_id": run_id,
+        "started_at": started,
+        "items_in": len(all_articles),
+        "items_new": len(new_articles),
+        "items_out": len(events)
+    })
+    ARTICLES.extend(new_articles)
     EVENTS.extend(events)
     BRIEFS.append(brief)
 
-    return {"run_id": run_id, "items_in": len(articles), "items_out": len(events)}
+    return {
+        "run_id": run_id,
+        "items_in": len(all_articles),
+        "items_new": len(new_articles),
+        "items_out": len(events)
+    }
+
 
 # ------------------ UI ------------------
 st.set_page_config(page_title="AI Macro News & Events Analyst", layout="wide")
