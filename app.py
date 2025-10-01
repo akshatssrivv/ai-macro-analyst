@@ -74,21 +74,35 @@ def _safe_dt(entry):
 # ---- collectors ----
 def fetch_gdelt_news():
     """
-    Enhanced GDELT collector:
-    - Multiple queries (themes + free text)
-    - 72h window
+    Beast-mode GDELT collector:
+    - Expanded queries across EU sovereigns + macro + global spillovers
+    - 7-day window
     - Dedup by URL
     """
+
     queries = [
-        "theme:SOVEREIGN_DEBT",
-        "theme:INFLATION",
-        "theme:INTEREST_RATES",
-        "theme:ECON_FINANCE",
-        "ECB OR Eurozone OR OAT OR Bund OR BTP OR Gilts OR Treasuries OR sovereign bond"
+        # Country-level sovereign bonds
+        "France OAT OR French budget OR French debt OR AFT OR Bercy",
+        "Italy BTP OR Italian deficit OR Tesoro OR Giorgetti",
+        "Germany Bund OR Finanzagentur OR German debt OR Scholz",
+        "Spain Bonos OR SPGB OR Tesoro Público OR Sanchez",
+        "UK Gilts OR DMO OR UK debt OR Hunt OR BoE",
+
+        # EU-wide
+        "ECB OR Governing Council OR Lagarde OR Villeroy OR Schnabel",
+        "Eurozone inflation OR Eurostat CPI OR HICP OR growth OR recession",
+
+        # Global spillovers
+        "US Treasuries OR NFP OR FOMC OR Powell",
+        "IMF OR World Bank OR sovereign debt crisis",
+        "Argentina OR Turkey OR default OR downgrade",
+
+        # Ratings
+        "Fitch OR Moody OR S&P OR downgrade OR upgrade sovereign rating"
     ]
 
     now = datetime.utcnow()
-    since = now - timedelta(days=3)   # 72h window
+    since = now - timedelta(days=7)   # 7-day window
     start = since.strftime("%Y%m%d%H%M%S")
     end = now.strftime("%Y%m%d%H%M%S")
 
@@ -120,7 +134,7 @@ def fetch_gdelt_news():
                     "published_at": dt,
                     "country": item.get("sourceCountry", "N/A"),
                     "headline": item.get("title", "(no title)"),
-                    "body": item.get("url")  # no summary, keep URL as placeholder
+                    "body": u  # no summary available, keep URL
                 })
         except Exception as e:
             print(f"GDELT fetch failed for query {q}:", e)
